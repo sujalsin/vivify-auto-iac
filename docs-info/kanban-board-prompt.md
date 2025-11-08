@@ -1,18 +1,44 @@
 # Kanban Board Implementation Prompt
 
 ## Overview
-Create a fully functional Kanban board web application with real-time WebSocket data synchronization. The application should display tasks as draggable cards grouped by status columns, with clickable cards that open modal popups showing detailed task information. The board should automatically update when data changes on the server.
+Create a fully functional Kanban board web application with real-time WebSocket data synchronization, with a functional chat panel sidebar. The application should display tasks as draggable cards grouped by status columns, with clickable cards that open modal popups showing detailed task information. The board should automatically update when data changes on the server.
 
 ## Layout Structure
 
 ### 1.1 Main Container Layout
 - **Layout Ratio**: 1:5 split layout
-  - **Left Panel (1/6 width)**: Chat panel or sidebar (optional, can be empty initially)
+  - **Left Panel (1/6 width)**: Chat panel or sidebar (conversational agent that has access to gemini pro)
   - **Right Panel (5/6 width)**: Kanban board area
 - **Responsive Design**: 
   - On mobile/tablet: Stack vertically or use overlay for details panel
   - On desktop: Side-by-side layout with kanban board taking majority of space
 - **Full Height**: Application should use full viewport height (`h-screen` or `100vh`)
+
+
+# Page 1: Chat + Kanban Board
+
+**Kanban Base**: Reuse Kanban code from `samples/kanban-frontend/src`
+
+**Layout**:
+```
+┌───────────────────────────────────────────────────────┐
+│  Vibe DevOps                            [Profile]     │
+├──────────────┬────────────────────────────────────────┤
+│              │  Kanban Board                          │
+│  Chat        │  ┌────┬────┬──────┬────────┬──────┐    │
+│  Interface   │  │Todo│Prog│Review│Deploying│Done │    │
+│              │  ├────┴────┴──────┴────────┴──────┘    │
+│  [Messages]  │  │  [Deployment Task Cards]            │
+│              │  │                                     │
+│  [Input]     │  │                                     │
+│              │  │                                     │
+│  [Agent      │  │                                     │
+│   Status]    │  │                                     │
+└──────────────┴────────────────────────────────────────┘
+```
+
+# Page 2: Architecture Dashboard
+Leave that empty for now. we will build this later
 
 ### 1.2 Kanban Board Structure
 ```
@@ -32,7 +58,7 @@ Create a fully functional Kanban board web application with real-time WebSocket 
 
 ### 1.3 Component Hierarchy
 ```
-App
+Kanban App
 ├── LayoutContainer (1:5 ratio)
 │   ├── LeftPanel (1/6 width) - Chat/Sidebar
 │   └── RightPanel (5/6 width)
