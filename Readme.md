@@ -1,10 +1,10 @@
-# Vibe DevOps
+# Vivify - Auto IaC
 
 > A modern cloud DevOps platform combining AI-powered task management with real-time GCP infrastructure visualization.
 
-## What is Vibe DevOps?
+## What is Vivify - Auto IaC?
 
-Vibe DevOps is an intelligent platform that helps DevOps teams manage their cloud infrastructure and deployment tasks through an intuitive interface powered by AI. It combines three core capabilities:
+Vivify - Auto IaC is an intelligent platform that helps DevOps teams manage their cloud infrastructure and deployment tasks through an intuitive interface powered by AI. It combines three core capabilities:
 
 1. **AI Chat Assistant** - A conversational agent powered by Google Gemini that helps you manage tasks, query infrastructure, and get DevOps insights
 2. **Kanban Task Board** - Real-time task management with drag-and-drop functionality and WebSocket synchronization
@@ -27,6 +27,9 @@ Vibe DevOps is an intelligent platform that helps DevOps teams manage their clou
 - 🎨 **Modern Dark UI** - Clean, responsive interface with GCP brand colors
 - 🔍 **Web Search Integration** - Agent can search the web for DevOps information
 - 🛠️ **Tool-based Architecture** - Extensible agent with pluggable tools
+
+## Demo
+https://www.youtube.com/watch?v=-56QSaqNldw
 
 ## Architecture
 
