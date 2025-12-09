@@ -48,13 +48,12 @@ async def root():
     }
 
 # Import and include routers
-from api.routes import gcp, chat
+from api.routes import gcp, chat, experiments, task_graphs, aws
 app.include_router(gcp.router, prefix="/api/gcp", tags=["GCP"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
-
-# Tasks router will be added later
-# from api.routes import tasks
-# app.include_router(tasks.router, prefix="/api/tasks", tags=["Tasks"])
+app.include_router(experiments.router, prefix="/api/experiments", tags=["Experiments"])
+app.include_router(task_graphs.router, prefix="/api/task-graphs", tags=["Task Graphs"])
+app.include_router(aws.router, prefix="/api/aws", tags=["AWS"])
 
 if __name__ == "__main__":
     import uvicorn

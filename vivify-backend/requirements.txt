@@ -13,8 +13,25 @@ websockets==12.0
 
 # Agent dependencies
 langchain==0.2.16
-langchain-google-genai==1.0.10
 langchain-community==0.2.16
+google-generativeai>=0.3.0
 tavily-python==0.3.0
 sqlalchemy==2.0.23
 aiosqlite==0.19.0
+
+# Database
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# AWS (LocalStack)
+boto3==1.34.0
+botocore==1.34.0
+
+# Terraform
+python-hcl2==4.3.0
+
+# Orchestration
+# langgraph - using custom orchestrator instead
+
+# Experiment utilities
+pandas==2.2.0
