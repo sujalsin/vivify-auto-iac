@@ -1,8 +1,9 @@
 """Deployment Agent - plans, applies, rolls back; handles drift"""
 
+import os
 import asyncio
 from typing import Dict, Any
-from services.aws.deployment import DeploymentService
+from services.gcp.deployment import GCPDeploymentService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,19 +13,24 @@ class DeploymentAgent:
     """Deploys infrastructure and handles drift"""
     
     def __init__(self):
-        self.deployment = DeploymentService()
+        self.deployment = GCPDeploymentService()
+        self.project_id = os.getenv("GCP_PROJECT_ID")
     
     async def deploy(self, iac_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Deploy infrastructure from IaC"""
+        """Deploy infrastructure from IaC to GCP"""
         
         try:
             terraform_config = iac_data.get("terraform_config", "")
             variables = iac_data.get("variables", {})
             stack_name = iac_data.get("stack_name", "default-stack")
             
+            if not self.project_id:
+                raise ValueError("GCP_PROJECT_ID not set")
+            
             result = await self.deployment.deploy_stack(
                 stack_name=stack_name,
                 terraform_config=terraform_config,
+                project_id=self.project_id,
                 variables=variables
             )
             

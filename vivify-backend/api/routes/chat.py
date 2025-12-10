@@ -6,11 +6,17 @@ Handles conversational agent interactions
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from api.models.chat import ChatMessage
-from services.agent_service import get_agent
 import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+try:
+    from services.agent_service import get_agent
+except ImportError as e:
+    logger.warning(f"Agent service not available: {e}")
+    def get_agent():
+        raise ValueError("Agent service not available due to dependency issues")
 
 router = APIRouter()
 
@@ -30,10 +36,10 @@ async def send_message(request: ChatMessage):
     
     try:
         agent = get_agent()
-    except ValueError as e:
+    except (ValueError, ImportError) as e:
         raise HTTPException(
             status_code=500,
-            detail="Agent not configured. Please add GEMINI_API_KEY to environment variables."
+            detail=f"Agent not available: {str(e)}"
         )
     
     logger.info(f"Received message from session {request.session_id}: {request.message[:50]}...")

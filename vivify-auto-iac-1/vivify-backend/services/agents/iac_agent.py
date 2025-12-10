@@ -1,9 +1,8 @@
 """IaC Generation Agent - emits Terraform/CloudFormation with module graph"""
 
 import os
-import asyncio
-from typing import Dict, Any, List, Optional
-from services.gcp.terraform import GCPTerraformService
+from typing import Dict, Any, List
+from services.aws.terraform import TerraformService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,38 +12,18 @@ class IaCAgent:
     """Generates Terraform/CloudFormation templates"""
     
     def __init__(self):
-        self.terraform = GCPTerraformService()
+        self.terraform = TerraformService()
     
-    async def generate_iac(self, architecture: Dict[str, Any], project_id: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_iac(self, architecture: Dict[str, Any]) -> Dict[str, Any]:
         """Generate IaC templates from architecture"""
         
         try:
             resources = architecture.get("architecture", [])
             variables = architecture.get("variables", {})
             
-            # Get project_id from environment or architecture
-            if not project_id:
-                project_id = os.getenv("GCP_PROJECT_ID")
-                if not project_id:
-                    raise ValueError("GCP_PROJECT_ID not set in environment or architecture")
-            
-            # Map AWS resource types to GCP equivalents for compatibility
-            mapped_resources = []
-            for resource in resources:
-                resource_type = resource.get("type", "")
-                # Map AWS types to GCP
-                if resource_type == "s3":
-                    resource["type"] = "google_storage_bucket"
-                elif resource_type == "vpc":
-                    resource["type"] = "google_compute_network"
-                elif resource_type == "lambda":
-                    resource["type"] = "google_cloudfunctions_function"
-                mapped_resources.append(resource)
-            
             # Generate Terraform config
             terraform_config = self.terraform.generate_terraform_config(
-                resources=mapped_resources,
-                project_id=project_id,
+                resources=resources,
                 variables=variables
             )
             
@@ -94,6 +73,7 @@ class IaCAgent:
     def __call__(self, input_data: Any) -> Dict[str, Any]:
         """Make agent callable"""
         if isinstance(input_data, dict):
+            import asyncio
             return asyncio.run(self.generate_iac(input_data))
         return {"error": "Invalid input"}
 

@@ -6,8 +6,9 @@ import uuid
 from typing import Dict, Any, List, Optional
 from .base import BaseExperiment
 from services.agents import RequirementsAgent, ArchitectureAgent, IaCAgent, DeploymentAgent
-from services.aws.deployment import DeploymentService
+from services.gcp.deployment import GCPDeploymentService
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ class E2DeployabilityExperiment(BaseExperiment):
             logger.warning("GEMINI_API_KEY not set - E2 will use simplified agents")
         self.iac_agent = IaCAgent()
         self.deployment_agent = DeploymentAgent()
-        self.deployment_service = DeploymentService()
+        self.deployment_service = GCPDeploymentService()
+        self.project_id = os.getenv("GCP_PROJECT_ID")
     
     async def run(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Run E2 experiment"""
@@ -114,23 +116,31 @@ class E2DeployabilityExperiment(BaseExperiment):
                 if self.architecture_agent:
                     architecture = await self.architecture_agent.propose_architecture(requirements)
                 else:
-                    # Simplified architecture without LLM
+                    # Simplified architecture without LLM - use GCP storage bucket
                     architecture = {
                         "architecture": [
-                            {"type": "s3", "id": "test-bucket", "config": {"bucket_name": f"test-{uuid.uuid4()}"}}
-                        ] if "S3" in prompt or "bucket" in prompt.lower() else [
-                            {"type": "vpc", "id": "test-vpc", "config": {"cidr_block": "10.0.0.0/16"}}
+                            {"type": "google_storage_bucket", "id": "test-bucket", "config": {"bucket_name": f"vivify-test-{uuid.uuid4().hex[:8]}"}}
+                        ] if "bucket" in prompt.lower() or "storage" in prompt.lower() else [
+                            {"type": "google_compute_network", "id": "test-vpc", "config": {"name": f"test-vpc-{uuid.uuid4().hex[:8]}"}}
                         ]
                     }
                 
-                # Step 3: Generate IaC
-                iac_data = await self.iac_agent.generate_iac(architecture)
+                # Step 3: Generate IaC with project_id
+                if not self.project_id:
+                    raise ValueError("GCP_PROJECT_ID not set")
                 
-                # Step 4: Attempt deployment
-                stack_name = f"e2-{uuid.uuid4()}"
-                iac_data["stack_name"] = stack_name
+                iac_data = await self.iac_agent.generate_iac(architecture, project_id=self.project_id)
                 
-                deployment_result = await self.deployment_agent.deploy(iac_data)
+                # Step 4: Attempt deployment to GCP
+                stack_name = f"e2-{uuid.uuid4().hex[:8]}"
+                terraform_config = iac_data.get("terraform_config", "")
+                
+                deployment_result = await self.deployment_service.deploy_stack(
+                    stack_name=stack_name,
+                    terraform_config=terraform_config,
+                    project_id=self.project_id,
+                    variables={"gcp_region": os.getenv("GCP_REGION", "us-central1")}
+                )
                 
                 iteration_time = time.time() - iteration_start
                 
@@ -165,7 +175,7 @@ class E2DeployabilityExperiment(BaseExperiment):
         # Cleanup
         if success:
             try:
-                await self.deployment_agent.rollback(stack_name)
+                await self.deployment_service.rollback_stack(stack_name)
             except:
                 pass
         
@@ -191,23 +201,23 @@ class E2DeployabilityExperiment(BaseExperiment):
             return "other"
     
     def _get_default_prompts(self) -> List[Dict[str, Any]]:
-        """Get default test prompts"""
+        """Get default test prompts for GCP"""
         return [
             {
-                "prompt": "Create an S3 bucket for storing application data",
+                "prompt": "Create a storage bucket for storing application data",
                 "difficulty": "level-1"
             },
             {
-                "prompt": "Create a VPC with public and private subnets",
+                "prompt": "Create a storage bucket with invalid_property='true'",
+                "difficulty": "level-1"
+            },
+            {
+                "prompt": "Create a VPC network with subnets",
                 "difficulty": "level-2"
             },
             {
-                "prompt": "Create a Lambda function with IAM role and S3 trigger",
+                "prompt": "Create a Cloud Function with storage trigger",
                 "difficulty": "level-3"
-            },
-            {
-                "prompt": "Create a security group allowing HTTP and HTTPS traffic",
-                "difficulty": "level-1"
             }
         ]
 

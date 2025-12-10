@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import CloudDevopsArchitectPage from './pages/CloudDevopsArchitectPage';
 import GCPArchitectureDashboardPage from './pages/GCPArchitectureDashboardPage';
+import ExperimentsPage from './pages/ExperimentsPage';
 import { GCPConnectionProvider, useGCPConnection } from './context/GCPConnectionContext';
 import UserMenu from './components/UserMenu';
 import ServiceAccountModal from './components/ServiceAccountModal';
 
-type Tab = 'architect' | 'canvas';
+type Tab = 'architect' | 'canvas' | 'experiments';
 
 const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('architect');
@@ -39,6 +40,13 @@ const AppContent: React.FC = () => {
             >
               Live Architecture Canvas
             </button>
+            <button
+              onClick={() => setActiveTab('experiments')}
+              className={getTabClass('experiments')}
+              aria-current={activeTab === 'experiments' ? 'page' : undefined}
+            >
+              Experiments
+            </button>
           </nav>
         </div>
         <UserMenu />
@@ -46,6 +54,7 @@ const AppContent: React.FC = () => {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'architect' && <CloudDevopsArchitectPage />}
         {activeTab === 'canvas' && <GCPArchitectureDashboardPage />}
+        {activeTab === 'experiments' && <ExperimentsPage />}
       </div>
       {isModalOpen && <ServiceAccountModal onClose={() => setIsModalOpen(false)} />}
     </div>

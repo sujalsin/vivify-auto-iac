@@ -59,16 +59,61 @@ class E1ParallelismExperiment(BaseExperiment):
                 dependencies=dependencies
             )
             
-            # Register test agent
-            async def test_agent(input_data):
-                await asyncio.sleep(0.1)  # Simulate work
-                return {"result": "success", "input": input_data}
+            # Register test agents - 10% real LLM, 90% CPU-bound
+            from services.agents import RequirementsAgent, ArchitectureAgent
+            import hashlib
+            import json
             
-            orchestrator.register_agent("test", test_agent)
+            llm_agent_available = False
+            try:
+                requirements_agent = RequirementsAgent()
+                llm_agent_available = True
+            except:
+                logger.warning("LLM agent not available, using CPU-bound tasks only")
             
-            # Run sequential baseline
+            async def real_llm_agent(input_data):
+                """10% of tasks - real LLM agent call"""
+                try:
+                    task_id = input_data.get("task_id", 0)
+                    prompt = f"Extract requirements from: Task {task_id} needs infrastructure"
+                    result = await requirements_agent.extract_requirements(prompt)
+                    return {"result": result, "type": "llm", "input": input_data}
+                except Exception as e:
+                    logger.error(f"LLM agent failed: {e}")
+                    return {"result": {"error": str(e)}, "type": "llm_failed", "input": input_data}
+            
+            async def cpu_bound_agent(input_data):
+                """90% of tasks - CPU-bound work (hashing, validation)"""
+                task_id = input_data.get("task_id", 0)
+                # CPU-intensive work: hash computation and data validation
+                data = json.dumps(input_data).encode('utf-8')
+                # Multiple hash iterations for CPU load
+                hash_result = hashlib.sha256(data).hexdigest()
+                for _ in range(100):  # Additional CPU work
+                    hash_result = hashlib.sha256(hash_result.encode('utf-8')).hexdigest()
+                # Data validation
+                validation_result = {
+                    "valid": len(hash_result) == 64,
+                    "checksum": hash_result[:8]
+                }
+                return {"result": validation_result, "type": "cpu_bound", "input": input_data}
+            
+            # Register both agent types
+            if llm_agent_available:
+                orchestrator.register_agent("llm_task", real_llm_agent)
+            orchestrator.register_agent("cpu_task", cpu_bound_agent)
+            
+            # Assign agent types: 10% LLM, 90% CPU-bound
+            llm_count = int(num_tasks * 0.1)
+            for i, task in enumerate(tasks):
+                if i < llm_count and llm_agent_available:
+                    task["agent_type"] = "llm_task"
+                else:
+                    task["agent_type"] = "cpu_task"
+            
+            # Run sequential baseline with real work
             start_time = time.time()
-            sequential_results = await self._run_sequential(tasks[:10])  # Sample
+            sequential_results = await self._run_sequential(tasks[:10], llm_agent_available)  # Sample
             sequential_time = time.time() - start_time
             await self.record_metric("sequential_time", sequential_time, "seconds")
             
@@ -103,11 +148,38 @@ class E1ParallelismExperiment(BaseExperiment):
             await self.fail_run(str(e))
             raise
     
-    async def _run_sequential(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Run tasks sequentially for baseline"""
+    async def _run_sequential(self, tasks: List[Dict[str, Any]], llm_available: bool) -> List[Dict[str, Any]]:
+        """Run tasks sequentially for baseline with real work"""
+        import hashlib
+        import json
+        from services.agents import RequirementsAgent
+        
         results = []
+        requirements_agent = None
+        if llm_available:
+            try:
+                requirements_agent = RequirementsAgent()
+            except:
+                pass
+        
         for task in tasks:
-            await asyncio.sleep(0.1)  # Simulate work
+            agent_type = task.get("agent_type", "cpu_task")
+            input_data = task.get("input_data", {})
+            
+            if agent_type == "llm_task" and requirements_agent:
+                # Real LLM work
+                try:
+                    prompt = f"Extract requirements from: Task {input_data.get('task_id', 0)}"
+                    await requirements_agent.extract_requirements(prompt)
+                except:
+                    pass
+            else:
+                # CPU-bound work
+                data = json.dumps(input_data).encode('utf-8')
+                hash_result = hashlib.sha256(data).hexdigest()
+                for _ in range(100):
+                    hash_result = hashlib.sha256(hash_result.encode('utf-8')).hexdigest()
+            
             results.append({"task_id": task["id"], "status": "completed"})
         return results
 

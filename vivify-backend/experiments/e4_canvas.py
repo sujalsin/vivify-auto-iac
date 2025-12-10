@@ -3,9 +3,12 @@
 import asyncio
 import time
 import statistics
+import json
+import websockets
 from typing import Dict, Any, List, Optional
 from .base import BaseExperiment
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -66,50 +69,96 @@ class E4CanvasExperiment(BaseExperiment):
         canvas_size: int,
         duration_seconds: int
     ) -> Dict[str, Any]:
-        """Test canvas performance for a given size"""
+        """Test canvas performance with real WebSocket connections"""
         
-        # Simulate WebSocket events
+        # Real WebSocket connections
         latencies = []
         total_events = 0
         dropped_events = 0
         api_times = []
         
-        # Simulate sessions
-        async def simulate_session(session_id: int):
+        # Get WebSocket URL from environment or default
+        ws_url = os.getenv("WEBSOCKET_URL", "ws://localhost:8000/ws/canvas")
+        
+        # Real WebSocket session
+        async def real_websocket_session(session_id: int):
             nonlocal total_events, dropped_events
             session_events = 0
+            connection = None
             
-            for _ in range(duration_seconds * events_per_sec):
-                # Simulate event processing
-                event_start = time.time()
+            try:
+                # Connect to WebSocket
+                connection = await websockets.connect(ws_url)
                 
-                # Simulate network latency
-                await asyncio.sleep(0.001 * (canvas_size / 1000))  # Scale with canvas size
-                
-                # Simulate API call
-                api_start = time.time()
-                await asyncio.sleep(0.005)  # 5ms API call
-                api_time = (time.time() - api_start) * 1000
-                api_times.append(api_time)
-                
-                event_latency = (time.time() - event_start) * 1000
-                latencies.append(event_latency)
-                
-                # Simulate dropped events (0.1% chance)
-                if time.time() % 1000 < 1:
-                    dropped_events += 1
-                
-                total_events += 1
-                session_events += 1
-                
-                # Rate limit
-                await asyncio.sleep(1.0 / events_per_sec)
+                for event_num in range(duration_seconds * events_per_sec):
+                    # Send echo message to measure latency
+                    event_start = time.time()
+                    echo_message = {
+                        "type": "echo",
+                        "timestamp": event_start,
+                        "session_id": session_id,
+                        "event_num": event_num,
+                        "canvas_size": canvas_size
+                    }
+                    
+                    try:
+                        # Send message
+                        await connection.send(json.dumps(echo_message))
+                        
+                        # Wait for response with timeout
+                        try:
+                            response = await asyncio.wait_for(connection.recv(), timeout=1.0)
+                            response_time = time.time()
+                            
+                            # Parse response
+                            response_data = json.loads(response)
+                            
+                            # Calculate round-trip latency
+                            if "response_timestamp" in response_data:
+                                latency = (response_time - event_start) * 1000  # Convert to ms
+                                latencies.append(latency)
+                                
+                                # API time (time to process on server)
+                                if "original_timestamp" in response_data:
+                                    api_time = (response_data["response_timestamp"] - response_data["original_timestamp"]) * 1000
+                                    api_times.append(api_time)
+                            
+                            total_events += 1
+                            session_events += 1
+                            
+                        except asyncio.TimeoutError:
+                            # Connection timeout - dropped event
+                            dropped_events += 1
+                            logger.warning(f"Session {session_id} event {event_num} timed out")
+                    
+                    except Exception as e:
+                        # Send failed - dropped event
+                        dropped_events += 1
+                        logger.warning(f"Session {session_id} event {event_num} failed: {e}")
+                    
+                    # Rate limit
+                    await asyncio.sleep(1.0 / events_per_sec)
+            
+            except Exception as e:
+                logger.error(f"WebSocket session {session_id} error: {e}")
+                dropped_events += 1
+            finally:
+                if connection:
+                    try:
+                        await connection.close()
+                    except:
+                        pass
         
-        # Run concurrent sessions
+        # Run concurrent real WebSocket sessions
         start_time = time.time()
-        tasks = [simulate_session(i) for i in range(num_sessions)]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [real_websocket_session(i) for i in range(num_sessions)]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         total_time = time.time() - start_time
+        
+        # Count connection failures
+        for result in results:
+            if isinstance(result, Exception):
+                dropped_events += 1
         
         # Calculate metrics
         if latencies:

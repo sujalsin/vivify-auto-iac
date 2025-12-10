@@ -6,9 +6,9 @@ import uuid
 import random
 from typing import Dict, Any, List, Optional
 from .base import BaseExperiment
-from services.aws.deployment import DeploymentService
-from services.aws.terraform import TerraformService
+from services.gcp.deployment import GCPDeploymentService
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +22,20 @@ class E3ConcurrencyExperiment(BaseExperiment):
             name="IaC Concurrency, Drift, and Rollback",
             description="Measure convergence time, state lock contention, rollback success rate"
         )
-        self.deployment_service = DeploymentService()
-        self.terraform_service = TerraformService()
+        self.deployment_service = GCPDeploymentService()
+        self.project_id = os.getenv("GCP_PROJECT_ID")
+        if not self.project_id:
+            logger.warning("GCP_PROJECT_ID not set")
     
     async def run(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Run E3 experiment"""
         config = config or {}
         num_stacks = config.get("num_stacks", 10)
-        regions = config.get("regions", ["us-east-1", "us-west-1", "us-west-2"])
+        regions = config.get("regions", ["us-central1", "us-east1", "us-west1"])
         inject_drift = config.get("inject_drift", True)
-        inject_failures = config.get("inject_failures", True)
+        
+        if not self.project_id:
+            raise ValueError("GCP_PROJECT_ID not set")
         
         await self.start_run(config)
         
@@ -54,7 +58,7 @@ class E3ConcurrencyExperiment(BaseExperiment):
             # Deploy stacks concurrently
             start_time = time.time()
             deployment_tasks = [
-                self._deploy_stack(stack, inject_failures) for stack in stacks
+                self._deploy_stack(stack) for stack in stacks
             ]
             deployment_results = await asyncio.gather(*deployment_tasks, return_exceptions=True)
             deployment_time = time.time() - start_time
@@ -99,47 +103,36 @@ class E3ConcurrencyExperiment(BaseExperiment):
             raise
     
     def _generate_stack_config(self, stack_name: str, region: str) -> str:
-        """Generate a simple Terraform stack config"""
+        """Generate Terraform config for Pub/Sub topic (hardcoded for fast provisioning)"""
+        topic_name = f"{stack_name}-topic"
+        # Pub/Sub topics provision in <2 seconds, perfect for concurrency testing
         return f"""terraform {{
   required_providers {{
-    aws = {{
-      source  = "hashicorp/aws"
+    google = {{
+      source  = "hashicorp/google"
       version = "~> 5.0"
     }}
   }}
 }}
 
-provider "aws" {{
-  region = "{region}"
-  endpoints {{
-    s3 = "http://localhost:4566"
-    ec2 = "http://localhost:4566"
-  }}
-  skip_credentials_validation = true
-  skip_metadata_api_check = true
-  skip_region_validation = true
+provider "google" {{
+  project = "{self.project_id}"
+  region  = "{region}"
 }}
 
-resource "aws_s3_bucket" "test" {{
-  bucket = "{stack_name}-bucket"
+resource "google_pubsub_topic" "test" {{
+  name = "{topic_name}"
 }}
 """
     
-    async def _deploy_stack(self, stack: Dict[str, Any], inject_failure: bool) -> Dict[str, Any]:
-        """Deploy a single stack"""
+    async def _deploy_stack(self, stack: Dict[str, Any]) -> Dict[str, Any]:
+        """Deploy a single stack - no failure injection, only real failures"""
         try:
-            # Randomly inject failure
-            if inject_failure and random.random() < 0.1:  # 10% failure rate
-                return {
-                    "success": False,
-                    "error": "Simulated failure",
-                    "stack_name": stack["name"]
-                }
-            
             result = await self.deployment_service.deploy_stack(
                 stack_name=stack["name"],
                 terraform_config=stack["config"],
-                variables={"aws_region": stack["region"]}
+                project_id=self.project_id,
+                variables={"gcp_region": stack["region"]}
             )
             
             return result
@@ -153,14 +146,15 @@ resource "aws_s3_bucket" "test" {{
             }
     
     async def _inject_drift(self, stacks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Inject drift into stacks"""
+        """Detect drift in stacks (with consistency wait built into service)"""
         results = []
         for stack in stacks:
             try:
                 drift_result = await self.deployment_service.detect_drift(stack["name"])
                 results.append({
                     "stack_name": stack["name"],
-                    "has_drift": drift_result.get("has_drift", False)
+                    "has_drift": drift_result.get("has_drift", False),
+                    "plan_output": drift_result.get("plan_result", {}).get("output", "")
                 })
             except Exception as e:
                 results.append({
